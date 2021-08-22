@@ -1,4 +1,9 @@
-﻿using System;
+﻿// Grupo:
+//    Bruno Ricardo Junkes
+//    Igor Christofer Eisenhut
+//    Manoella Marcondes Junkes
+
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 

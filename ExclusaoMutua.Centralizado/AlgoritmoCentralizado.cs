@@ -16,8 +16,6 @@ namespace ExclusaoMutua.Centralizado
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly CancellationToken _cancellationToken;
 
-        private Processo _coordenador;
-
         public AlgoritmoCentralizado()
         {
             _processos = new();
@@ -33,34 +31,34 @@ namespace ExclusaoMutua.Centralizado
                 while (!_cancellationToken.IsCancellationRequested)
                 {
                     CriarNovoProcesso().Processar();
-
-                    await Task.Delay(TimeSpan.FromSeconds(40));
+            
+                    await Task.Delay(TimeSpan.FromSeconds(40), _cancellationToken);
                 }
             });
-
+            
             await Task.Delay(1000); // Para dar tempo de criar o primeiro processo
-
+            
             Task.Factory.StartNew(async () =>
             {
                 while (!_cancellationToken.IsCancellationRequested)
                 {
                     DefinirNovoCoordenador();
-
-                    await Task.Delay(TimeSpan.FromMinutes(1));
+            
+                    await Task.Delay(TimeSpan.FromMinutes(1), _cancellationToken);
                 }
             });
         }
 
         private Processo CriarNovoProcesso()
         {
-            Console.WriteLine("** Criando novo processo");
-
             var pid = ObterNovoPid();
             var processo = new Processo(pid);
+            
+            Log($"Criando novo processo: {processo.Pid}");
 
             _processos.Add(processo);
 
-            Console.WriteLine($"** Quantidade de processos ativos: {_processos.Count} ({string.Join(", ", _processos.Select(x => x.Pid))})");
+            Log($"Processos ativos: {string.Join(", ", _processos.Select(x => x.Pid))}");
             
             return processo;
         }
@@ -79,42 +77,44 @@ namespace ExclusaoMutua.Centralizado
 
         private void DefinirNovoCoordenador()
         {
-            if (_coordenador != null)
+            if (Processo.Coordenador != null)
                 MatarCoordenador();
 
-            ElegerNovoCoordenador();
+            var processo = ElegerNovoCoordenador();
 
-            NotificarNovoCoordenador();
+            NotificarNovoCoordenador(processo);
         }
 
         private void MatarCoordenador()
         {
-            Console.WriteLine("** Matando o coordenador");
+            Log($"Matando o coordenador: {Processo.Coordenador.Pid}");
 
-            _coordenador.Morrer();
-            _processos.Remove(_coordenador);
+            Processo.Coordenador.Morrer();
+            _processos.Remove(Processo.Coordenador);
         }
 
-        private void ElegerNovoCoordenador()
+        private Processo ElegerNovoCoordenador()
         {
             var indiceAleatorio = _random.Next(0, _processos.Count - 1);
             var novoCoordenador = _processos.ElementAt(indiceAleatorio);
 
-            Console.WriteLine($"** Novo coordenador eleito: {novoCoordenador.Pid}");
+            Log($"Coordenador eleito: {novoCoordenador.Pid}");
 
-            _coordenador = novoCoordenador;
+            return novoCoordenador;
         }
 
-        private void NotificarNovoCoordenador()
+        private void NotificarNovoCoordenador(Processo processo)
         {
-            Console.WriteLine($"** Notificando processos sobre o novo coordenador");
+            Log("Notificando processos sobre o novo coordenador");
 
-            foreach (var processo in _processos)
-            {
-                processo.AtualizarCoordenador(_coordenador);
-            }
+            Processo.Coordenador = processo;
         }
 
+        private void Log(string mensagem)
+        {
+            Console.WriteLine($"\t\t\t\t\t\t** {mensagem}");
+        }
+        
         public void Dispose()
         {
             _cancellationTokenSource.Cancel();

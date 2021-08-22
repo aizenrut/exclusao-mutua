@@ -6,8 +6,8 @@ namespace ExclusaoMutua.Centralizado.Estruturas.Interfaces
 {
     public interface ICoordenador
     {
-        Task<bool> ConcederAcesso(IProcesso processo);
-        void LiberarRecurso();
+        Task<bool> ConcederAcesso(Processo processo);
+        bool LiberarRecurso(Processo processo);
         void Morrer();
     }
 }

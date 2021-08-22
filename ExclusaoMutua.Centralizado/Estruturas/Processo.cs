@@ -11,22 +11,23 @@ namespace ExclusaoMutua.Centralizado.Estruturas
 {
     public class Processo : IProcesso, ICoordenador
     {
+        public static Processo Coordenador;
+        public static bool RecursoLiberado = true;
+        
         private bool _isAlive = true;
-        private bool _recursoSendoConsumido;
         private readonly ConcurrentQueue<IProcesso> _fila;
 
         public int Pid { get; }
-        
-        private static ICoordenador _coordenador;
+
         private readonly Random _random;
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly CancellationToken _cancellationToken;
-        
+
 
         public Processo(int pid)
         {
             Pid = pid;
-            
+
             _fila = new();
             _random = new();
             _cancellationTokenSource = new();
@@ -37,48 +38,49 @@ namespace ExclusaoMutua.Centralizado.Estruturas
         // Coordenador -------------------------------------------------------------------------------------------------
 
 
-        public async Task<bool> ConcederAcesso(IProcesso processo)
+        public async Task<bool> ConcederAcesso(Processo processo)
         {
             if (!_isAlive)
             {
-                Console.WriteLine("** Coordenador indisponivel");
                 return false;
             }
 
-            if (_recursoSendoConsumido || !_fila.IsEmpty)
+            if (!RecursoLiberado || !_fila.IsEmpty)
             {
                 _fila.Enqueue(processo);
-                Console.WriteLine($"[(Coordenador) {Pid}] Posto na fila: {processo.Pid}");
-
-                while (_recursoSendoConsumido ||
-                       _fila.TryPeek(out var proprocessoDaFila) && proprocessoDaFila != processo)
+                LogCoordenador($"Posto na fila: {string.Join(", ", _fila.ToArray().Select(x => x.Pid))}");
+                
+                while (!RecursoLiberado || _fila.TryPeek(out var proprocessoDaFila) && proprocessoDaFila != processo)
                 {
+                    if (!_isAlive)
+                        return false;
+
                     await Task.Delay(TimeSpan.FromSeconds(1));
                 }
 
                 _fila.TryDequeue(out _);
             }
 
-            _recursoSendoConsumido = true;
-
-            Console.WriteLine($"[(Coordenador) {Pid}] Acesso concedido: {processo.Pid}");
+            LogCoordenador($"Acesso concedido: {processo.Pid}");
             return true;
         }
 
-        public void LiberarRecurso()
+        public bool LiberarRecurso(Processo processo)
         {
             if (!_isAlive)
             {
-                Console.WriteLine("** Coordenador indisponivel");
+                return false;
             }
+
+            LogCoordenador($"Recurso liberado: {processo.Pid}");
             
-            Console.WriteLine($"[(Coordenador) {Pid}] Recurso liberado");
-            _recursoSendoConsumido = false;
+            return true;
         }
 
         public void Morrer()
         {
             _isAlive = false;
+            _cancellationTokenSource.Cancel();
         }
 
 
@@ -87,28 +89,48 @@ namespace ExclusaoMutua.Centralizado.Estruturas
 
         public void Processar()
         {
-            Console.WriteLine($"[{Pid}] Iniciando o processamento");
+            LogProcesso("Iniciou o processamento");
             Task.Factory.StartNew(async () =>
             {
                 while (!_cancellationToken.IsCancellationRequested)
                 {
-                    Console.WriteLine($"[{Pid}] Solicitando acesso ao recurso...");
-                    if (_coordenador != null && await _coordenador.ConcederAcesso(this))
+                    var pidCoordenador = Coordenador.Pid;
+                    
+                    LogProcesso("Solicitando acesso ao recurso...");
+                    if (Coordenador != null && await Coordenador.ConcederAcesso(this))
                     {
-                        Console.WriteLine($"[{Pid}] Consumindo o recurso...");
-                        await Esperar(5, 15);
-                        Console.WriteLine($"[{Pid}] Parou de consumir o recurso");
-
-                        _coordenador.LiberarRecurso();
+                        await ConsumirRecurso();
+                        
+                        LogProcesso("Notificando liberação...");
+                        if (pidCoordenador != Coordenador.Pid || !Coordenador.LiberarRecurso(this))
+                        {
+                            LogProcesso("Coordenador indisponível");
+                        }
                     }
                     else
                     {
-                        Console.WriteLine($"[{Pid}] Coordenador indisponível");
+                        LogProcesso($"Coordenador indisponível");
                     }
 
                     await Esperar(10, 25);
                 }
             });
+        }
+
+        private async Task ConsumirRecurso()
+        {
+            try
+            {
+                RecursoLiberado = false;
+                LogProcesso("Consumindo o recurso...");
+
+                await Esperar(5, 15);
+            }
+            finally
+            {
+                LogProcesso("Parou de consumir o recurso");
+                RecursoLiberado = true;
+            }
         }
 
         private async Task Esperar(int de, int ate)
@@ -117,20 +139,14 @@ namespace ExclusaoMutua.Centralizado.Estruturas
             await Task.Delay(TimeSpan.FromSeconds(segundos), _cancellationToken);
         }
 
-        public void FinalizarProcessamento()
+        private void LogProcesso(string mensagem)
         {
-            Console.WriteLine($"[{Pid}] Finalizando o processamento");
-            _cancellationTokenSource.Cancel();
+            Console.WriteLine($"[{Pid}] {mensagem}");
         }
-
-        public void AtualizarCoordenador(ICoordenador coordenador)
+        
+        private void LogCoordenador(string mensagem)
         {
-            if (coordenador == this)
-            {
-                FinalizarProcessamento();
-            }
-            
-            _coordenador = coordenador;
+            Console.WriteLine($"\t\t\t\t\t\t\t\t\t\t\t\t\t[{Pid} (Coordenador)] {mensagem}");
         }
     }
 }

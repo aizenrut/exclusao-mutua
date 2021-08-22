@@ -11,18 +11,16 @@ namespace ExclusaoMutua.Centralizado.Estruturas
 {
     public class Processo : IProcesso, ICoordenador
     {
-        public static Processo Coordenador;
-        public static bool RecursoLiberado = true;
-        
-        private bool _isAlive = true;
+        private bool _ativo = true;
         private readonly ConcurrentQueue<IProcesso> _fila;
-
-        public int Pid { get; }
-
         private readonly Random _random;
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly CancellationToken _cancellationToken;
 
+        public static Processo Coordenador;
+        public static bool RecursoLiberado = true;
+        
+        public int Pid { get; }
 
         public Processo(int pid)
         {
@@ -34,58 +32,7 @@ namespace ExclusaoMutua.Centralizado.Estruturas
             _cancellationToken = _cancellationTokenSource.Token;
         }
 
-
-        // Coordenador -------------------------------------------------------------------------------------------------
-
-
-        public async Task<bool> ConcederAcesso(Processo processo)
-        {
-            if (!_isAlive)
-            {
-                return false;
-            }
-
-            if (!RecursoLiberado || !_fila.IsEmpty)
-            {
-                _fila.Enqueue(processo);
-                LogCoordenador($"Posto na fila: {string.Join(", ", _fila.ToArray().Select(x => x.Pid))}");
-                
-                while (!RecursoLiberado || _fila.TryPeek(out var proprocessoDaFila) && proprocessoDaFila != processo)
-                {
-                    if (!_isAlive)
-                        return false;
-
-                    await Task.Delay(TimeSpan.FromSeconds(1));
-                }
-
-                _fila.TryDequeue(out _);
-            }
-
-            LogCoordenador($"Acesso concedido: {processo.Pid}");
-            return true;
-        }
-
-        public bool LiberarRecurso(Processo processo)
-        {
-            if (!_isAlive)
-            {
-                return false;
-            }
-
-            LogCoordenador($"Recurso liberado: {processo.Pid}");
-            
-            return true;
-        }
-
-        public void Morrer()
-        {
-            _isAlive = false;
-            _cancellationTokenSource.Cancel();
-        }
-
-
-        // Processo ----------------------------------------------------------------------------------------------------
-
+        #region Processo
 
         public void Processar()
         {
@@ -95,12 +42,12 @@ namespace ExclusaoMutua.Centralizado.Estruturas
                 while (!_cancellationToken.IsCancellationRequested)
                 {
                     var pidCoordenador = Coordenador.Pid;
-                    
+
                     LogProcesso("Solicitando acesso ao recurso...");
                     if (Coordenador != null && await Coordenador.ConcederAcesso(this))
                     {
                         await ConsumirRecurso();
-                        
+
                         LogProcesso("Notificando liberação...");
                         if (pidCoordenador != Coordenador.Pid || !Coordenador.LiberarRecurso(this))
                         {
@@ -144,9 +91,60 @@ namespace ExclusaoMutua.Centralizado.Estruturas
             Console.WriteLine($"[{Pid}] {mensagem}");
         }
         
+        #endregion
+        
+        #region Coordenador
+
+        public async Task<bool> ConcederAcesso(Processo processo)
+        {
+            if (!_ativo)
+            {
+                return false;
+            }
+
+            if (!RecursoLiberado || !_fila.IsEmpty)
+            {
+                _fila.Enqueue(processo);
+                LogCoordenador($"Posto na fila: {string.Join(", ", _fila.ToArray().Select(x => x.Pid))}");
+
+                while (!RecursoLiberado || _fila.TryPeek(out var processoDaFila) && processoDaFila != processo)
+                {
+                    if (!_ativo)
+                        return false;
+
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                }
+
+                _fila.TryDequeue(out _);
+            }
+
+            LogCoordenador($"Acesso concedido: {processo.Pid}");
+            return true;
+        }
+
+        public bool LiberarRecurso(Processo processo)
+        {
+            if (!_ativo)
+            {
+                return false;
+            }
+
+            LogCoordenador($"Recurso liberado: {processo.Pid}");
+
+            return true;
+        }
+
+        public void Morrer()
+        {
+            _ativo = false;
+            _cancellationTokenSource.Cancel();
+        }
+
         private void LogCoordenador(string mensagem)
         {
             Console.WriteLine($"\t\t\t\t\t\t\t\t\t\t\t\t\t[{Pid} (Coordenador)] {mensagem}");
         }
+        
+        #endregion
     }
 }

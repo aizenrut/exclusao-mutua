@@ -24,7 +24,7 @@ namespace ExclusaoMutua.Centralizado.Estruturas
 
         public static Processo Coordenador;
         public static bool RecursoLiberado = true;
-        
+
         public int Pid { get; }
 
         public Processo(int pid)
@@ -46,7 +46,7 @@ namespace ExclusaoMutua.Centralizado.Estruturas
             {
                 while (!_cancellationToken.IsCancellationRequested)
                 {
-                    var pidCoordenador = Coordenador.Pid;
+                    var pidCoordenador = Coordenador?.Pid;
 
                     LogProcesso("Solicitando acesso ao recurso...");
                     if (Coordenador != null && await Coordenador.ConcederAcesso(this))
@@ -95,9 +95,9 @@ namespace ExclusaoMutua.Centralizado.Estruturas
         {
             Console.WriteLine($"[{Pid}] {mensagem}");
         }
-        
+
         #endregion
-        
+
         #region Coordenador
 
         public async Task<bool> ConcederAcesso(Processo processo)
@@ -149,7 +149,7 @@ namespace ExclusaoMutua.Centralizado.Estruturas
         {
             Console.WriteLine($"\t\t\t\t\t\t\t\t\t\t\t\t\t[{Pid} (Coordenador)] {mensagem}");
         }
-        
+
         #endregion
     }
 }
